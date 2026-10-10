@@ -1,0 +1,21 @@
+import { test, expect } from '@playwright/test';
+test('shows the customer name immediately and preserves login on returning to bookings', async ({ page }) => {
+  let verificationRequests = 0;
+  page.on('request', request => { if (request.url().endsWith('/auth/request-verification')) verificationRequests++; });
+  await page.goto('/my-bookings');
+  await page.getByLabel('Full name').fill('Session Customer');
+  await page.getByLabel('Email address').fill(`session-${Date.now()}@example.com`);
+  await page.getByRole('button', { name: 'Send verification code' }).click();
+  const code = await page.getByTestId('demo-code').textContent();
+  await page.getByLabel('Verification code').fill(code!);
+  await page.getByRole('button', { name: 'Verify email' }).click();
+  await expect(page.getByRole('link', { name: 'My bookings — Session Customer' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'YOUR APPOINTMENTS' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'My bookings — Session Customer' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send verification code' })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Services', exact: true }).click();
+  await page.getByRole('link', { name: 'My bookings — Session Customer' }).click();
+  await expect(page.getByRole('heading', { name: 'YOUR APPOINTMENTS' })).toBeVisible();
+  expect(verificationRequests).toBe(1);
+});

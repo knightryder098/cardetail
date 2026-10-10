@@ -46,9 +46,27 @@ export async function actorFromRequest(request: Request): Promise<Session | null
   if (!actor) return null;
   if (isDemo()) return actor;
   if (!actor.accessToken) return null;
-  const { data, error } = await supabase().auth.getUser(actor.accessToken); if (error || !data.user) return null;
+  const client = supabase();
+  let { data, error } = await client.auth.getUser(actor.accessToken);
+  let current = actor;
+  if (error?.status === 401 && actor.refreshToken) {
+    const refreshed = await client.auth.refreshSession({ refresh_token: actor.refreshToken });
+    if (refreshed.error || !refreshed.data.session || refreshed.data.user?.id !== actor.customerId && !s.staff.some(m => m.id === actor.customerId && m.userId === refreshed.data.user?.id)) return null;
+    const tokens = refreshed.data.session;
+    ({ data, error } = await client.auth.getUser(tokens.access_token));
+    if (error || !data.user || data.user.id !== refreshed.data.user?.id) return null;
+    const saved = await store().transaction(state => {
+      const existing = state.sessions.find(a => a.id === actor.id && new Date(a.expiresAt).getTime() > Date.now());
+      if (!existing) return null;
+      existing.accessToken = tokens.access_token; existing.refreshToken = tokens.refresh_token;
+      return existing;
+    });
+    if (!saved) return null;
+    current = saved;
+  }
+  if (error || !data.user) return null;
   const member = staffRole(s, data.user.id);
-  return { ...actor, customerId: member?.id ?? data.user.id, role: member?.role ?? 'customer', name: member?.name ?? actor.name };
+  return { ...current, customerId: member?.id ?? data.user.id, role: member?.role ?? 'customer', name: member?.name ?? current.name };
 }
 export function newSession(input: Partial<Session> & Pick<Session, 'email' | 'name' | 'customerId' | 'role'>): Session { return { id: randomUUID(), expiresAt: new Date(Date.now() + 8 * 3600000).toISOString(), ...input }; }
 export function linkManualBookings(s: State, verified: Session) {

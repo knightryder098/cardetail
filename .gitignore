@@ -1,20 +1,55 @@
+# Dependencies and generated build output
 node_modules/
 .next/
-.env*
-!.env.example
-.data/
-test-results/
-playwright-report/
-*.tsbuildinfo
-.DS_Store
-test-results/
-docs/
-supabase
-car-detailing-config-platform
-test
-gg.crt
 .open-next/
 .wrangler/
+.turbo/
+.cache/
+/out/
+*.tsbuildinfo
+
+# Private environment settings and local credentials
+.env*
+!.env.example
 .dev.vars*
-supabase_logs*.json
+gg.crt
 *.key
+*.pem
+
+# Local application state and database files
+.data/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+
+# Generated tests, coverage, logs, and diagnostic exports
+test-results/
+playwright-report/
+blob-report/
+coverage/
+.nyc_output/
+*.log
+/logs/
+supabase_logs*.json
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local Supabase tooling; migrations remain part of the release source
+supabase/.temp/
+supabase/.branches/
+
+# Local reference documents and scratch work
+/docs/
+/car-detailing-config-platform/
+/test/
