@@ -35,8 +35,8 @@ it('rejects enrollment for an unmapped or revoked account', async () => {
   expect(m.mfa.enroll).not.toHaveBeenCalled();
 });
 it('returns a private QR code only for a mapped account', async () => {
-  m.mfa.enroll.mockResolvedValue({ data: { id: 'factor', totp: { qr_code: '<svg/>', secret: 'private' } }, error: null });
-  expect(await enrollAdminMfa(actor)).toEqual({ factorId: 'factor', qrCode: '<svg/>' });
+  m.mfa.enroll.mockResolvedValue({ data: { id: 'factor', totp: { qr_code: '<svg/>', secret: 'private', uri: 'otpauth://...' } }, error: null });
+  expect(await enrollAdminMfa(actor)).toEqual({ factorId: 'factor', qrCode: '<svg/>', secret: 'private', uri: 'otpauth://...' });
 });
 it('does not replace a verified authenticator during password recovery', async () => {
   m.mfa.listFactors.mockResolvedValue({ data: { totp: [{ id: 'existing' }], all: [] }, error: null });

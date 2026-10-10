@@ -17,6 +17,8 @@ export function AdminSignIn({
   const [challengeId, setChallengeId] = useState("");
   const [factorId, setFactorId] = useState("");
   const [qr, setQr] = useState("");
+  const [svg, setSvg] = useState("");
+  const [secret, setSecret] = useState("");
   const [setup, setSetup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -25,18 +27,33 @@ export function AdminSignIn({
     if (existing) {
       setFactorId(existing);
       setQr("");
+      setSvg("");
+      setSecret("");
     } else {
-      const enrolled = await api<{ factorId: string; qrCode: string }>(
+      const enrolled = await api<{ factorId: string; qrCode: string; secret?: string }>(
         "auth/admin-mfa/enroll",
         "POST",
         {}
       );
       setFactorId(enrolled.factorId);
-      setQr(
-        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-          enrolled.qrCode
-        )}`
-      );
+      if (enrolled.secret) setSecret(enrolled.secret);
+      const raw = enrolled.qrCode || "";
+      let svgMarkup = "";
+      let dataUri = "";
+      if (raw.startsWith("data:image/svg+xml;utf-8,")) {
+        svgMarkup = decodeURIComponent(raw.slice("data:image/svg+xml;utf-8,".length));
+        dataUri = raw;
+      } else if (raw.startsWith("data:image/svg+xml,")) {
+        svgMarkup = decodeURIComponent(raw.slice("data:image/svg+xml,".length));
+        dataUri = raw;
+      } else if (raw.startsWith("<svg")) {
+        svgMarkup = raw;
+        dataUri = `data:image/svg+xml;utf-8,${encodeURIComponent(raw)}`;
+      } else {
+        dataUri = raw;
+      }
+      setSvg(svgMarkup);
+      setQr(dataUri);
     }
     setCode("");
     setStep("mfa");
@@ -156,23 +173,61 @@ export function AdminSignIn({
         )}
         {step === "mfa" && (
           <>
-            {qr && (
+            {(svg || qr) && (
               <>
                 <Notice>
                   Scan this QR code in Google Authenticator, Microsoft
-                  Authenticator or another authenticator app. Then enter its
-                  six-digit code. Keep this QR code private.
+                  Authenticator or another authenticator app, or enter the setup key manually below.
                 </Notice>
-                <img
-                  src={qr}
-                  width={220}
-                  height={220}
-                  alt="Scan to set up your Balaji Studio authenticator"
-                  style={{ maxWidth: "100%", background: "white" }}
-                />
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", margin: "20px 0" }}>
+                  {svg ? (
+                    <div
+                      style={{
+                        background: "white",
+                        padding: 16,
+                        borderRadius: 8,
+                        maxWidth: 240,
+                        width: "100%",
+                        display: "flex",
+                        justifyContent: "center",
+                      }}
+                      dangerouslySetInnerHTML={{ __html: svg }}
+                    />
+                  ) : (
+                    <img
+                      src={qr}
+                      width={220}
+                      height={220}
+                      alt="Scan to set up your Balaji Studio authenticator"
+                      style={{ maxWidth: "100%", background: "white", borderRadius: 8 }}
+                    />
+                  )}
+                  {secret && (
+                    <div style={{ marginTop: 14, textAlign: "center", width: "100%" }}>
+                      <small style={{ color: "var(--muted, #64748b)", display: "block", marginBottom: 6, fontSize: "11px" }}>
+                        Manual key (if you cannot scan the QR code):
+                      </small>
+                      <code
+                        style={{
+                          background: "rgba(0,0,0,0.06)",
+                          padding: "6px 12px",
+                          borderRadius: 6,
+                          fontSize: "13px",
+                          letterSpacing: "0.12em",
+                          fontFamily: "monospace",
+                          display: "inline-block",
+                          userSelect: "all",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {secret}
+                      </code>
+                    </div>
+                  )}
+                </div>
               </>
             )}
-            {!qr && (
+            {!qr && !svg && (
               <Notice>
                 Enter the code from your enrolled authenticator app.
               </Notice>

@@ -134,7 +134,7 @@ export async function enrollAdminMfa(actor: Session) {
   }
   const { data, error } = await client.auth.mfa.enroll({ factorType: 'totp', issuer: 'Balaji Studio' });
   if (error || !data) throw new AppError('MFA_SETUP_FAILED', 'Could not create your authenticator setup. Try again.', 503);
-  return { factorId: data.id, qrCode: data.totp.qr_code };
+  return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret, uri: data.totp.uri };
 }
 export async function setAdminPassword(actor: Session, password: string) {
   const { client, member } = await adminClient(actor);
