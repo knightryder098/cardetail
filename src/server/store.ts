@@ -1,14 +1,16 @@
 import path from 'node:path';
 import { Pool } from 'pg';
+import { createClient } from '@supabase/supabase-js';
 import type { State } from '@/lib/types';
 import { createState } from './seed';
 import { SqliteStore } from './sqlite-store';
 import { getWorkerDatabase } from './worker-runtime';
+import { AppError } from './errors';
 export { SqliteStore } from './sqlite-store';
 export interface Store {
   read(): Promise<State>;
   transaction<T>(fn: (s: State) => T): Promise<T>;
-  resolveAuthUser?(email: string): Promise<string | null>;
+  resolveAuthUser?(email: string, name: string): Promise<string | null>;
 }
 class PostgresStore implements Store {
   constructor(private workerConnection?: string) {}
@@ -24,28 +26,45 @@ class PostgresStore implements Store {
       },
     });
   }
-  async resolveAuthUser(email: string): Promise<string | null> {
+  async resolveAuthUser(email: string, name: string): Promise<string> {
     const pool = this.createPool();
     try {
       const cleanEmail = email.trim().toLowerCase();
-      if (!cleanEmail || !cleanEmail.includes('@')) return null;
-      const existing = await pool.query('SELECT id FROM auth.users WHERE lower(email) = $1 LIMIT 1', [cleanEmail]);
-      if (existing.rows[0]?.id) return existing.rows[0].id;
-      const inserted = await pool.query(
-        `INSERT INTO auth.users (
-          instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-          raw_app_meta_data, raw_user_meta_data, created_at, updated_at
-        ) VALUES (
-          '00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated',
-          $1, '', now(),
-          '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
-        ) ON CONFLICT (email) DO UPDATE SET updated_at = now() RETURNING id`,
-        [cleanEmail]
-      );
-      return inserted.rows[0]?.id ?? null;
-    } catch (err) {
-      console.error('Failed to resolve auth user', email, err);
-      return null;
+      const findExisting = async (): Promise<string | null> => {
+        try {
+          const result = await pool.query('SELECT id FROM auth.users WHERE lower(email) = $1 LIMIT 1', [cleanEmail]);
+          return result.rows[0]?.id ?? null;
+        } catch {
+          throw new AppError('STAFF_ACCOUNT_LOOKUP_FAILED', 'Could not check the team member’s login account. Team changes were not saved; please try again.', 503);
+        }
+      };
+      const existing = await findExisting();
+      if (existing) return existing;
+
+      // Auth owns account creation and its identities. Never insert auth.users directly.
+      const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!process.env.SUPABASE_URL || !key) {
+        throw new AppError('STAFF_AUTH_NOT_CONFIGURED', 'Creating team login accounts requires a private Supabase secret key on the server. Team changes were not saved.', 503);
+      }
+      const client = createClient(process.env.SUPABASE_URL, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+      const creationFailed = () => new AppError('STAFF_ACCOUNT_CREATION_FAILED', 'Could not create the team member’s login account. Team changes were not saved. Check the server’s Supabase Auth configuration and try again.', 503);
+      let result;
+      try {
+        // The member must still prove email ownership in first-time setup.
+        result = await client.auth.admin.createUser({ email: cleanEmail, email_confirm: false, user_metadata: { name } });
+      } catch {
+        throw creationFailed();
+      }
+      if (result.error) {
+        // A customer signup or another owner may create the same email concurrently.
+        if (['email_exists', 'user_already_exists'].includes(result.error.code ?? '')) {
+          const concurrent = await findExisting();
+          if (concurrent) return concurrent;
+        }
+        throw creationFailed();
+      }
+      if (!result.data.user?.id || result.data.user.email?.toLowerCase() !== cleanEmail) throw creationFailed();
+      return result.data.user.id;
     } finally {
       await pool.end();
     }

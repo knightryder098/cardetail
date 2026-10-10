@@ -50,15 +50,29 @@ export async function handleAdmin(request: Request, path: string, actor: Session
     return Response.json(await store().transaction(s => { const prior = requireValue(s.revisions.find(r => r.id === revisionId)); const errors = validatePublication(prior.catalogue); if (errors.length) throw new AppError('PUBLICATION_INVALID', errors.join(' '), 422); const next = { ...structuredClone(prior), id: randomUUID(), number: (s.revisions.at(-1)?.number ?? 0) + 1, at: new Date().toISOString(), author: a.name }; s.revisions.push(next); s.activeRevisionId = next.id; s.draftBaseRevisionId = next.id; s.draft = structuredClone(next.catalogue); audit(s, a.name, 'catalogue.rollback', `Restored revision ${prior.number} as ${next.number}`); return { revision: next.number }; }));
   }
   if (path === 'admin/staff' && request.method === 'PUT') {
-    authorize(s, a, 'staff.manage'); const { staff } = z.object({ staff: z.array(z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(120), email: z.email().transform(v => v.toLowerCase().trim()), role: z.enum(['owner', 'manager', 'staff']), active: z.boolean(), userId: z.string().uuid().nullable() }).strict()).max(50) }).strict().parse(body);
+    if (!isDemo() && !s.staff.some(m => m.id === a.customerId && m.active && m.role === 'owner')) throw new AppError('FORBIDDEN', 'Only an active owner can manage team access.', 403);
+    authorize(s, a, 'staff.manage'); const { staff } = z.object({ staff: z.array(z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(120), email: z.email().transform(v => v.toLowerCase().trim()), role: z.enum(['owner', 'manager', 'staff']), active: z.boolean(), userId: z.string().uuid().nullable().default(null) }).strict()).max(50) }).strict().parse(body);
+    const baseline = JSON.stringify(s.staff);
+    for (const m of staff) {
+      const previous = s.staff.find(member => member.id === m.id);
+      // Authentication mappings are server-owned, including when an email is changed.
+      m.userId = previous?.email.toLowerCase() === m.email ? previous.userId : null;
+    }
+    validateStaffAccess(staff, false);
     const currentStore = store();
     for (const m of staff) {
-      if (m.active && !m.userId && m.email && currentStore.resolveAuthUser) {
-        m.userId = await currentStore.resolveAuthUser(m.email);
+      if (!isDemo() && m.active && !m.userId) {
+        m.userId = await currentStore.resolveAuthUser?.(m.email, m.name) ?? null;
+        if (!m.userId) throw new AppError('STAFF_ACCOUNT_CREATION_FAILED', 'Could not create the team member’s login account. Team changes were not saved.', 503);
       }
     }
     validateStaffAccess(staff, !isDemo());
-    return Response.json(await currentStore.transaction(s => { s.staff = staff; audit(s, a.name, 'staff.updated', 'Roles and access updated'); return { saved: true, staff }; }));
+    return Response.json(await currentStore.transaction(s => {
+      if (JSON.stringify(s.staff) !== baseline) throw new AppError('TEAM_CONFLICT', 'Team access changed while saving. Reload and review the latest team before saving again.', 409);
+      authorize(s, a, 'staff.manage');
+      if (!isDemo() && !s.staff.some(m => m.id === a.customerId && m.active && m.role === 'owner')) throw new AppError('FORBIDDEN', 'Only an active owner can manage team access.', 403);
+      s.staff = staff; audit(s, a.name, 'staff.updated', 'Roles and access updated'); return { saved: true, staff };
+    }));
   }
   if (path === 'admin/bookings' && request.method === 'POST') {
     authorize(s, a, 'catalog.write'); const input = z.object({ selection: quoteSchema, startAt: z.iso.datetime(), name: z.string().trim().min(1).max(120), email: z.email().transform(v => v.toLowerCase()), phone: z.string().max(25), source: z.enum(['phone', 'walk_in']), contactReviewed: z.literal(true) }).strict().parse(body);
