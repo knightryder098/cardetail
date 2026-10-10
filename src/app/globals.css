@@ -14,3 +14,7 @@
 .draft-preview-banner{display:flex;align-items:center;justify-content:space-between;gap:15px;background:#d7edf0;padding:14px 5%;font-size:11px;border-bottom:1px solid #9fc5cf}.draft-preview-banner strong{letter-spacing:.1em;font-size:10px}@media(max-width:600px){.draft-preview-banner{flex-wrap:wrap}.draft-preview-banner span{order:3;width:100%}}
 
 .account-link{display:inline-flex;align-items:center;gap:8px}.account-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}@media(max-width:540px){.account-name{max-width:72px;font-size:10px}}
+
+.booking-settings { grid-column: 1 / -1; }
+.booking-setup-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.booking-readiness-issues { max-height: 280px; overflow-y: auto; padding-left: 24px; line-height: 1.7; }

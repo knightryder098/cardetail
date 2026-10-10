@@ -4,6 +4,23 @@ import { resolveQuote, availableSlots, validatePublication } from '@/server/doma
 const now = new Date('2026-10-09T03:00:00Z');
 const input = { modelId: 'veh-x3', serviceId: 'svc-exterior-detail', tierCode: 'normal' as const, planCode: 'one_time' as const };
 describe('Trusted pricing and publication', () => {
+  it('refuses to enable booking without any offered services', () => {
+    const c = createState().draft;
+    c.services.forEach(s => { s.enabled = false; });
+    expect(validatePublication(c).join(' ')).toMatch(/enable at least one service/i);
+    c.bookingEnabled = false;
+    expect(validatePublication(c)).toEqual([]);
+  });
+  it('refuses to enable booking without an offered plan', () => {
+    const c = createState().draft;
+    c.plans.forEach(p => { p.enabled = false; });
+    expect(validatePublication(c).join(' ')).toMatch(/enable at least one care plan/i);
+  });
+  it('refuses to enable booking when every weekday is closed', () => {
+    const c = createState().draft;
+    c.schedule.closedWeekdays = [0, 1, 2, 3, 4, 5, 6];
+    expect(validatePublication(c).join(' ')).toMatch(/open at least one weekday/i);
+  });
   it('adds prices and duration for multiple services and preserves each treatment snapshot', () => {
     const s=createState();const q=resolveQuote(s,{...input,serviceIds:['svc-exterior-detail','svc-interior-detail']},now);
     expect(q.totalPaise).toBe(592000);expect(q.durationMinutes).toBe(180);
