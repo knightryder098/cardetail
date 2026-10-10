@@ -74,10 +74,10 @@ export function linkManualBookings(s: State, verified: Session) {
   for (const b of s.bookings) if (b.customerId === manualId && b.email === verified.email) b.customerId = verified.customerId;
   for (const p of s.packages) if (p.customerId === manualId) p.customerId = verified.customerId;
 }
-export async function requestVerification(input: { name: string; email: string; phone?: string }) {
+export async function requestVerification(input: { name: string; email: string; phone?: string }, shouldCreateUser = true) {
   rateLimit(`email:${hash(input.email)}`, 100, 3600000);
   const id = randomUUID(); const code = String(randomInt(100000, 999999));
-  if (!isDemo()) { const { error } = await supabase().auth.signInWithOtp({ email: input.email, options: { shouldCreateUser: true } }); if (error) throw new AppError('VERIFICATION_DELIVERY_FAILED', 'We could not send a verification code. Try again later.', 503); }
+  if (!isDemo()) { const { error } = await supabase().auth.signInWithOtp({ email: input.email, options: { shouldCreateUser } }); if (error) throw new AppError('VERIFICATION_DELIVERY_FAILED', 'We could not send a verification code. Try again later.', 503); }
   await store().transaction(s => { s.challenges = s.challenges.filter(c => new Date(c.expiresAt).getTime() > Date.now()); s.challenges.push({ id, email: input.email, name: input.name, phone: input.phone ?? '', digest: hash(`${id}:${code}`), expiresAt: new Date(Date.now() + 10 * 60000).toISOString(), attempts: 0 }); });
   return { challengeId: id, ...(isDemo() ? { demoCode: code } : {}) };
 }
@@ -96,14 +96,58 @@ export async function adminPassword(email: string, password: string) {
   if (error || !data.session || !data.user) throw new AppError('SIGN_IN_FAILED', 'Email or password is incorrect.', 401);
   const s = await store().read(); const member = staffRole(s, data.user.id);
   if (!member) throw new AppError('FORBIDDEN', 'This account does not have dashboard access.', 403);
-  const { data: factors } = await client.auth.mfa.listFactors(); const factorId = factors?.totp[0]?.id;
-  if (!factorId) throw new AppError('MFA_SETUP_REQUIRED', 'Enroll an authenticator in Supabase before dashboard access.', 403);
+  const { data: factors, error: factorError } = await client.auth.mfa.listFactors();
+  if (factorError) throw new AppError('AUTH_UNAVAILABLE', 'Please try signing in again.', 503);
+  const factorId = factors?.totp[0]?.id ?? null;
   const session = newSession({ customerId: member.id, name: member.name, email, role: member.role, accessToken: data.session.access_token, refreshToken: data.session.refresh_token, mfa: false });
   await store().transaction(s => s.sessions.push(session)); return { session, factorId };
 }
+export async function requestAdminSetup(email: string) {
+  return requestVerification({ email, name: 'Studio team member' }, false);
+}
+async function adminClient(actor: Session) {
+  if (isDemo() || !actor.accessToken || !actor.refreshToken) throw new AppError('FORBIDDEN', 'Sign in with your staff account first.', 403);
+  const client = supabase();
+  const { data, error } = await client.auth.getUser(actor.accessToken);
+  const state = await store().read();
+  const member = data.user && staffRole(state, data.user.id);
+  if (error || !member) throw new AppError('FORBIDDEN', 'This account does not have dashboard access. Ask the owner to check Team & access.', 403);
+  const restored = await client.auth.setSession({ access_token: actor.accessToken, refresh_token: actor.refreshToken });
+  if (restored.error || !restored.data.session) throw new AppError('VERIFICATION_REQUIRED', 'Please sign in again.', 401);
+  return { client, member };
+}
+export async function adminMfaStatus(actor: Session) {
+  const { client } = await adminClient(actor);
+  const { data, error } = await client.auth.mfa.listFactors();
+  if (error) throw new AppError('AUTH_UNAVAILABLE', 'Could not check your authenticator. Try again.', 503);
+  return { factorId: data.totp[0]?.id ?? null };
+}
+export async function enrollAdminMfa(actor: Session) {
+  const { client } = await adminClient(actor);
+  const { data: factors, error: factorError } = await client.auth.mfa.listFactors();
+  if (factorError) throw new AppError('AUTH_UNAVAILABLE', 'Could not check your authenticator. Try again.', 503);
+  if (factors.totp.length) throw new AppError('MFA_ALREADY_ENROLLED', 'Use your existing authenticator to continue.', 409);
+  // A cancelled setup must not fill the user's factor quota. Verified factors are never removed here.
+  for (const factor of factors.all.filter(f => f.factor_type === 'totp' && f.status === 'unverified')) {
+    const removed = await client.auth.mfa.unenroll({ factorId: factor.id });
+    if (removed.error) throw new AppError('MFA_SETUP_FAILED', 'Could not restart authenticator setup. Try again.', 503);
+  }
+  const { data, error } = await client.auth.mfa.enroll({ factorType: 'totp', issuer: 'Balaji Studio' });
+  if (error || !data) throw new AppError('MFA_SETUP_FAILED', 'Could not create your authenticator setup. Try again.', 503);
+  return { factorId: data.id, qrCode: data.totp.qr_code };
+}
+export async function setAdminPassword(actor: Session, password: string) {
+  const { client, member } = await adminClient(actor);
+  const { data: assurance, error } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || !actor.mfa || assurance?.currentLevel !== 'aal2') throw new AppError('MFA_REQUIRED', 'Verify your authenticator before setting a password.', 403);
+  const updated = await client.auth.updateUser({ password });
+  if (updated.error || !updated.data.user || updated.data.user.id !== member.userId) throw new AppError('PASSWORD_SETUP_FAILED', 'Could not save your password. Use a strong password and try again.', 400);
+  await store().transaction(s => { s.sessions = s.sessions.filter(a => a.id === actor.id || a.customerId !== member.id && a.customerId !== updated.data.user.id); });
+  return { saved: true };
+}
 export async function confirmMfa(actor: Session, factorId: string, code: string) {
   rateLimit(`mfa:${actor.id}`, 5, 600000); if (!actor.accessToken || !actor.refreshToken) throw new AppError('FORBIDDEN', 'Please sign in again.', 401);
-  const client = supabase(); await client.auth.setSession({ access_token: actor.accessToken, refresh_token: actor.refreshToken });
+  const { client } = await adminClient(actor);
   const { data, error } = await client.auth.mfa.challengeAndVerify({ factorId, code }); if (error || !data) throw new AppError('INVALID_CODE', 'The authenticator code is incorrect.', 401);
   return store().transaction(s => { const a = s.sessions.find(a => a.id === actor.id)!; a.accessToken = data.access_token; a.refreshToken = data.refresh_token; a.mfa = true; return a; });
 }

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { quoteSchema, holdSchema, contactSchema, verifySchema } from '@/lib/schema';
 import { store, isDemo } from './store';
 import { AppError, requireValue } from './errors';
-import { actorFromRequest, adminPassword, assertEnvironment, confirmMfa, confirmVerification, demoOwner, rateLimit, requestVerification, sessionCookie } from './auth';
+import { actorFromRequest, adminPassword, adminMfaStatus, enrollAdminMfa, setAdminPassword, requestAdminSetup, assertEnvironment, confirmMfa, confirmVerification, demoOwner, rateLimit, requestVerification, sessionCookie } from './auth';
 import { availableSlots, resolveQuote, resolvePackageQuote } from './domain';
 import { changeBooking, confirmBooking, expireHolds, holdBooking, ownedBooking, packageBalance, rescheduleBooking } from './bookings';
 import { projectPublic } from './public-data';
@@ -24,6 +24,10 @@ export async function handleApi(request: Request): Promise<Response> {
     else if (path === 'auth/request-verification' && request.method === 'POST') response = Response.json(actor ? { signedIn: true, name: actor.name, email: actor.email } : await requestVerification(contactSchema.parse(body)));
     else if (path === 'auth/confirm-verification' && request.method === 'POST') { const input = verifySchema.parse(body); const session = await confirmVerification(input.challengeId, input.code); response = Response.json({ verified: true, name: session.name }); response.headers.set('Set-Cookie', sessionCookie(session)); }
     else if (path === 'auth/admin-login' && request.method === 'POST') { const input = z.object({ email: z.email().max(200), password: z.string().min(1).max(300) }).strict().parse(body); const result = await adminPassword(input.email, input.password); response = Response.json({ factorId: result.factorId, mfaRequired: true }); response.headers.set('Set-Cookie', sessionCookie(result.session)); }
+    else if (path === 'auth/admin-setup/request' && request.method === 'POST') { const input = z.object({ email: z.email().max(200) }).strict().parse(body); response = Response.json(await requestAdminSetup(input.email)); }
+    else if (path === 'auth/admin-mfa/status' && request.method === 'GET') response = Response.json(await adminMfaStatus(requireValue(actor, 'VERIFICATION_REQUIRED', 'Please verify your staff email first.')));
+    else if (path === 'auth/admin-mfa/enroll' && request.method === 'POST') response = Response.json(await enrollAdminMfa(requireValue(actor, 'VERIFICATION_REQUIRED', 'Please sign in again.')));
+    else if (path === 'auth/admin-password' && request.method === 'POST') { const input = z.object({ password: z.string().min(12).max(128) }).strict().parse(body); response = Response.json(await setAdminPassword(requireValue(actor, 'VERIFICATION_REQUIRED', 'Please sign in again.'), input.password)); }
     else if (path === 'auth/mfa' && request.method === 'POST') { const input = z.object({ factorId: z.string().uuid(), code: z.string().regex(/^\d{6}$/) }).strict().parse(body); const session = await confirmMfa(requireValue(actor, 'VERIFICATION_REQUIRED', 'Please sign in again.'), input.factorId, input.code); response = Response.json({ verified: true }); response.headers.set('Set-Cookie', sessionCookie(session)); }
     else if (path === 'auth/logout' && request.method === 'POST') { if (actor) await store().transaction(s => { s.sessions = s.sessions.filter(a => a.id !== actor.id); }); response = Response.json({ signedOut: true }); response.headers.set('Set-Cookie', sessionCookie(null)); }
     else if (path === 'quotes' && request.method === 'POST') { const input = quoteSchema.parse(body); response = Response.json(await store().transaction(s => { const quote = resolveQuote(s, input); s.quotes = s.quotes.filter(q => new Date(q.expiresAt).getTime() > Date.now()); s.quotes.push(quote); return quote; }), { status: 201 }); }

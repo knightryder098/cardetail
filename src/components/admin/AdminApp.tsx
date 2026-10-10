@@ -24,12 +24,13 @@ import {
 } from "lucide-react";
 import type { Catalogue } from "@/lib/types";
 import { api } from "@/lib/client-api";
-import { Brand, Button, Field, Notice } from "@/components/ui";
+import { Brand, Button, Notice } from "@/components/ui";
 import { AdminContext, type AdminData } from "./context";
 import { Dashboard } from "./Dashboard";
 import { BookingManager } from "./BookingManager";
 import { CatalogueEditors } from "./CatalogueEditors";
 import { SettingsEditors } from "./SettingsEditors";
+import { AdminSignIn } from "./AdminSignIn";
 const nav = [
   ["overview", "Overview", LayoutDashboard],
   ["bookings", "Appointments", CalendarDays],
@@ -64,10 +65,6 @@ export function AdminApp({
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
   const [mobile, setMobile] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [factor, setFactor] = useState("");
-  const [code, setCode] = useState("");
   const reload = useCallback(async () => {
     const d = await api<AdminData>("admin/data");
     setData(d);
@@ -112,16 +109,7 @@ export function AdminApp({
     setBusy(true);
     setError("");
     try {
-      if (demo) {
-        await api("auth/demo-owner", "POST", {});
-      } else if (!factor) {
-        const r = await api<{ factorId: string }>("auth/admin-login", "POST", {
-          email,
-          password,
-        });
-        setFactor(r.factorId);
-        return;
-      } else await api("auth/mfa", "POST", { factorId: factor, code });
+      await api("auth/demo-owner", "POST", {});
       const s = await api<{
         actor: { name: string; role: string; mfa?: boolean };
       }>("session");
@@ -214,50 +202,11 @@ export function AdminApp({
               </Button>
             </>
           ) : (
-            <form onSubmit={login}>
-              {!factor ? (
-                <>
-                  <Field label="Staff email">
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      autoComplete="username"
-                    />
-                  </Field>
-                  <Field label="Password">
-                    <input
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                    />
-                  </Field>
-                </>
-              ) : (
-                <Field label="Authenticator code">
-                  <input
-                    required
-                    inputMode="numeric"
-                    maxLength={6}
-                    pattern="[0-9]{6}"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    autoComplete="one-time-code"
-                  />
-                </Field>
-              )}
-              <Button type="submit" disabled={busy}>
-                {busy
-                  ? "Verifying…"
-                  : factor
-                  ? "Verify & open dashboard"
-                  : "Sign in"}
-                <ArrowUpRight size={16} />
-              </Button>
-            </form>
+            <AdminSignIn onAuthenticated={async () => {
+              const s = await api<{ actor: { name: string; role: string; mfa?: boolean } }>("session");
+              await reload();
+              setActor(s.actor);
+            }} />
           )}
           <Link href="/" className="back-link">
             Back to the storefront <ArrowUpRight size={14} />
