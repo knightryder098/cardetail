@@ -30,6 +30,9 @@ uses `verify-full`, the supplied database CA certificate, and disabled query
 caching. The driver’s internal Hyperdrive proxy connection does not itself
 perform origin TLS; Hyperdrive verifies the certificate and database hostname.
 Do not replace origin verification with `require`, disable, or insecure TLS.
+The non-secret `localConnectionString` is only for the deploy tool's local
+Hyperdrive emulator. It never changes the production resource. Running a
+local Worker preview requires an actual local PostgreSQL database.
 
 The build scripts remove OpenNext’s embedded environment fallbacks and block
 deployment if local environment files or configured private credentials are

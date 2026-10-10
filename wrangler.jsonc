@@ -11,6 +11,6 @@
   "observability": { "enabled": true, "redact_query_string": true },
   "vars": { "APP_MODE": "live", "APP_ORIGIN": "https://balaji-studio.gobinknightryder098.workers.dev" },
   "hyperdrive": [
-    { "binding": "HYPERDRIVE", "id": "68793fdbc3964a07a44f3d3c5cf38d44" }
+    { "binding": "HYPERDRIVE", "id": "68793fdbc3964a07a44f3d3c5cf38d44", "localConnectionString": "postgres://local:local@127.0.0.1:5432/balaji_dev" }
   ]
 }
