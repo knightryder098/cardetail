@@ -269,7 +269,7 @@ function CodeField({
         required
         inputMode="numeric"
         pattern="[0-9]{6}"
-        maxLength={10}
+        maxLength={8}
         value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
         autoComplete="one-time-code"
