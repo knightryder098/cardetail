@@ -26,7 +26,7 @@
     "clsx": "latest",
     "exceljs": "latest",
     "lucide-react": "latest",
-    "next": "latest",
+    "next": "16.3.8",
     "pg": "latest",
     "react": "latest",
     "react-dom": "latest",
