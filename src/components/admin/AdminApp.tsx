@@ -23,7 +23,7 @@ import {
   X,
 } from "lucide-react";
 import type { Catalogue } from "@/lib/types";
-import { api } from "@/lib/client-api";
+import { api, ApiError } from "@/lib/client-api";
 import { Brand, Button, Notice } from "@/components/ui";
 import { AdminContext, type AdminData } from "./context";
 import { Dashboard } from "./Dashboard";
@@ -156,11 +156,27 @@ export function AdminApp({
           }
         );
         draftVersion = saved.draftVersion;
+        // The draft save succeeded even if the subsequent publication fails.
+        // Keep the editor's optimistic version in sync so corrections can save.
+        setData(current => current ? {
+          ...current,
+          draft: structuredClone(draft),
+          draftVersion,
+          draftBaseRevisionId: data.activeRevisionId,
+        } : current);
+        setDirty(false);
       }
-      return api("admin/publish", "POST", {
-        baseRevisionId: data.activeRevisionId,
-        draftVersion,
-      });
+      try {
+        return await api("admin/publish", "POST", {
+          baseRevisionId: data.activeRevisionId,
+          draftVersion,
+        });
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "PUBLICATION_INVALID") {
+          setMessage("Draft saved. Publication was blocked; your live site is unchanged. Resolve the issues below. For missing prices, fill in the pricing matrix or disable the affected offers before publishing.");
+        }
+        throw error;
+      }
     }, "Published. Your storefront now reflects these changes.");
   }
   if (loading)

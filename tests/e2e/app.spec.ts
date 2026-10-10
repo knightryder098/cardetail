@@ -1,4 +1,20 @@
 import { test, expect } from '@playwright/test';
+test('a rejected publication preserves the saved draft and allows corrections without reloading', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Open demo dashboard' }).click();
+  await page.getByRole('link', { name: 'Pricing matrix', exact: true }).click();
+  const price = page.getByRole('spinbutton', { name: 'Normal standard price', exact: true });
+  const originalPrice = await price.inputValue();
+  await price.fill('');
+  await page.getByRole('button', { name: 'Publish changes', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: /missing standard .* price/ })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Draft saved. Publication was blocked' })).toBeVisible();
+  await price.fill(originalPrice);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Draft saved' })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish changes', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Published' })).toBeVisible();
+});
 test('owner can publish consultation-only mode and restore the complete booking flow', async ({ page }) => {
   await page.goto('/admin');
   await page.getByRole('button', { name: 'Open demo dashboard' }).click();
