@@ -350,7 +350,8 @@ function CodeField({
       <input
         required
         inputMode="numeric"
-        pattern="[0-9]"
+        pattern="[0-9]{6,8}"
+        minLength={6}
         maxLength={8}
         value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
