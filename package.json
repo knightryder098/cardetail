@@ -12,16 +12,21 @@
     "start": "next start --hostname 127.0.0.1 --port 3001",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:worker": "node scripts/check-release-source.mjs check && npm test && npm run typecheck && CLOUDFLARE_BUILD=1 opennextjs-cloudflare build && node scripts/prepare-worker-env.mjs && node scripts/check-worker-artifacts.mjs && node scripts/smoke-worker.mjs && node scripts/check-release-source.mjs record",
+    "preview:worker": "opennextjs-cloudflare preview",
+    "deploy:worker": "node scripts/check-release-source.mjs deploy && node scripts/check-worker-config.mjs && node scripts/check-worker-artifacts.mjs && opennextjs-cloudflare deploy",
+    "check:worker": "node scripts/check-worker-config.mjs"
   },
   "dependencies": {
     "@fontsource/manrope": "^5.3.0",
     "@fontsource/space-grotesk": "^5.3.0",
+    "@opennextjs/cloudflare": "1.20.10",
     "@supabase/supabase-js": "latest",
     "clsx": "latest",
     "exceljs": "latest",
     "lucide-react": "latest",
-    "next": "latest",
+    "next": "16.3.8",
     "pg": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -37,7 +42,15 @@
     "@types/react-dom": "latest",
     "tailwindcss": "latest",
     "typescript": "latest",
-    "vitest": "latest"
+    "vitest": "latest",
+    "wrangler": "4.149.0"
   },
-  "overrides": { "exceljs": { "uuid": "11.1.1" } }
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    },
+    "@node-minify/core": {
+      "glob": "10.5.0"
+    }
+  }
 }

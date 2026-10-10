@@ -9,8 +9,22 @@ export function assertEnvironment(request: Request) {
   const host = request.headers.get('host') ?? url.host;
   const external = new URL(`${url.protocol}//${host}`);
   if (isDemo() && !['localhost', '127.0.0.1', '[::1]'].includes(external.hostname)) throw new AppError('DEMO_LOCAL_ONLY', 'The demonstration is available only on this computer.', 403);
-  if (!isDemo() && (!process.env.APP_ORIGIN || host !== new URL(process.env.APP_ORIGIN).host)) throw new AppError('ORIGIN_NOT_CONFIGURED', 'The live application origin is not configured.', 503);
-  const expectedOrigin = isDemo() ? external.origin : process.env.APP_ORIGIN;
+  let expectedOrigin = external.origin;
+  if (!isDemo()) {
+    if (!process.env.APP_ORIGIN) throw new AppError('ORIGIN_NOT_CONFIGURED', 'The live application origin is not configured.', 503);
+    const entries = [process.env.APP_ORIGIN, ...(process.env.APP_ALLOWED_ORIGINS ?? '').split(',').filter(Boolean)];
+    const approved = entries.map(value => {
+      try {
+        const parsed = new URL(value.trim());
+        const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+        if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/' || parsed.hostname.includes('*') || (parsed.protocol !== 'https:' && !(loopback && parsed.protocol === 'http:'))) throw new Error();
+        return parsed;
+      } catch { throw new AppError('ORIGIN_NOT_CONFIGURED', 'Configure an exact HTTPS application origin (HTTP is allowed only for local testing).', 503); }
+    });
+    const selected = approved.find(origin => origin.host === host);
+    if (!selected) throw new AppError('ORIGIN_MISMATCH', 'Open the application using its configured website address.', 403);
+    expectedOrigin = selected.origin;
+  }
   const trustedJob = request.method==='POST' && url.pathname==='/api/v1/system/expire' && !!process.env.CRON_SECRET && request.headers.get('authorization')===`Bearer ${process.env.CRON_SECRET}`;
   if (!trustedJob && !['GET', 'HEAD'].includes(request.method) && request.headers.get('origin') !== expectedOrigin) throw new AppError('INVALID_ORIGIN', 'This request must come from the application.', 403);
 }
@@ -32,9 +46,27 @@ export async function actorFromRequest(request: Request): Promise<Session | null
   if (!actor) return null;
   if (isDemo()) return actor;
   if (!actor.accessToken) return null;
-  const { data, error } = await supabase().auth.getUser(actor.accessToken); if (error || !data.user) return null;
+  const client = supabase();
+  let { data, error } = await client.auth.getUser(actor.accessToken);
+  let current = actor;
+  if (error?.status === 401 && actor.refreshToken) {
+    const refreshed = await client.auth.refreshSession({ refresh_token: actor.refreshToken });
+    if (refreshed.error || !refreshed.data.session || refreshed.data.user?.id !== actor.customerId && !s.staff.some(m => m.id === actor.customerId && m.userId === refreshed.data.user?.id)) return null;
+    const tokens = refreshed.data.session;
+    ({ data, error } = await client.auth.getUser(tokens.access_token));
+    if (error || !data.user || data.user.id !== refreshed.data.user?.id) return null;
+    const saved = await store().transaction(state => {
+      const existing = state.sessions.find(a => a.id === actor.id && new Date(a.expiresAt).getTime() > Date.now());
+      if (!existing) return null;
+      existing.accessToken = tokens.access_token; existing.refreshToken = tokens.refresh_token;
+      return existing;
+    });
+    if (!saved) return null;
+    current = saved;
+  }
+  if (error || !data.user) return null;
   const member = staffRole(s, data.user.id);
-  return { ...actor, customerId: member?.id ?? data.user.id, role: member?.role ?? 'customer', name: member?.name ?? actor.name };
+  return { ...current, customerId: member?.id ?? data.user.id, role: member?.role ?? 'customer', name: member?.name ?? current.name };
 }
 export function newSession(input: Partial<Session> & Pick<Session, 'email' | 'name' | 'customerId' | 'role'>): Session { return { id: randomUUID(), expiresAt: new Date(Date.now() + 8 * 3600000).toISOString(), ...input }; }
 export function linkManualBookings(s: State, verified: Session) {
@@ -43,7 +75,7 @@ export function linkManualBookings(s: State, verified: Session) {
   for (const p of s.packages) if (p.customerId === manualId) p.customerId = verified.customerId;
 }
 export async function requestVerification(input: { name: string; email: string; phone?: string }) {
-  rateLimit(`email:${hash(input.email)}`, 5, 3600000);
+  rateLimit(`email:${hash(input.email)}`, 100, 3600000);
   const id = randomUUID(); const code = String(randomInt(100000, 999999));
   if (!isDemo()) { const { error } = await supabase().auth.signInWithOtp({ email: input.email, options: { shouldCreateUser: true } }); if (error) throw new AppError('VERIFICATION_DELIVERY_FAILED', 'We could not send a verification code. Try again later.', 503); }
   await store().transaction(s => { s.challenges = s.challenges.filter(c => new Date(c.expiresAt).getTime() > Date.now()); s.challenges.push({ id, email: input.email, name: input.name, phone: input.phone ?? '', digest: hash(`${id}:${code}`), expiresAt: new Date(Date.now() + 10 * 60000).toISOString(), attempts: 0 }); });

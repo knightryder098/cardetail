@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "balaji-studio",
+  "account_id": "06f769077b3e0fcef65f2d296482688a",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "preview_urls": false,
+  "observability": { "enabled": true, "redact_query_string": true },
+  "vars": { "APP_MODE": "live", "APP_ORIGIN": "https://balaji-studio.gobinknightryder098.workers.dev" },
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "68793fdbc3964a07a44f3d3c5cf38d44", "localConnectionString": "postgres://local:local@127.0.0.1:5432/balaji_dev" }
+  ]
+}

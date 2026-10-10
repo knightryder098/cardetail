@@ -1,10 +1,14 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, LockKeyhole } from 'lucide-react';
 import { api } from '@/lib/client-api';
 import { Button, Field, Notice } from '@/components/ui';
+import { useSession } from '@/lib/use-session';
 export function EmailVerification({ onVerified }: { onVerified: () => void }) {
+  const { actor, loading } = useSession();
+  useEffect(() => { if (actor) onVerified(); }, [actor, onVerified]);
   const [email,setEmail]=useState('');const [name,setName]=useState('');const [challenge,setChallenge]=useState('');const [code,setCode]=useState('');const [demoCode,setDemoCode]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false);
-  async function submit(e: React.FormEvent) {e.preventDefault();setBusy(true);setError('');try{if(!challenge){const r=await api<{challengeId:string;demoCode?:string}>('auth/request-verification','POST',{name,email});setChallenge(r.challengeId);setDemoCode(r.demoCode??'');}else{await api('auth/confirm-verification','POST',{challengeId:challenge,code});onVerified();}}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function submit(e: React.FormEvent) {e.preventDefault();setBusy(true);setError('');try{const session=await api<{actor:unknown}>('session');if(session.actor){onVerified();return;}if(!challenge){const r=await api<{signedIn?:boolean;challengeId?:string;demoCode?:string}>('auth/request-verification','POST',{name,email});if(r.signedIn){onVerified();return;}setChallenge(r.challengeId??'');setDemoCode(r.demoCode??'');}else{await api('auth/confirm-verification','POST',{challengeId:challenge,code});onVerified();}}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  if (loading || actor) return <p className="loading-label">Checking your session…</p>;
   return <form className="email-verification" onSubmit={submit}><div className="verification-icon"><LockKeyhole size={27}/></div><h2>{challenge?'CHECK YOUR EMAIL.':'YOUR BOOKINGS.\nYOUR DRIVE.'}</h2><p>Verify your email to securely view your appointments and prepaid care balances.</p>{error&&<Notice error>{error}</Notice>}{!challenge?<><Field label="Full name"><input required value={name} onChange={e=>setName(e.target.value)} maxLength={120} autoComplete="name"/></Field><Field label="Email address"><input type="email" required value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email"/></Field></>:<>{demoCode&&<Notice>Demo code: <strong data-testid="demo-code">{demoCode}</strong></Notice>}<Field label="Verification code"><input required value={code} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,8}" maxLength={8} onChange={e=>setCode(e.target.value)}/></Field></>}<Button type="submit" disabled={busy}>{busy?'Please wait…':challenge?'Verify email':'Send verification code'}<ArrowRight size={15}/></Button>{challenge&&<button type="button" className="text-button" onClick={()=>setChallenge('')}>Request another code</button>}</form>;
 }
