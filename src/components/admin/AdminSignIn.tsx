@@ -30,18 +30,20 @@ export function AdminSignIn({
       setSvg("");
       setSecret("");
     } else {
-      const enrolled = await api<{ factorId: string; qrCode: string; secret?: string }>(
-        "auth/admin-mfa/enroll",
-        "POST",
-        {}
-      );
+      const enrolled = await api<{
+        factorId: string;
+        qrCode: string;
+        secret?: string;
+      }>("auth/admin-mfa/enroll", "POST", {});
       setFactorId(enrolled.factorId);
       if (enrolled.secret) setSecret(enrolled.secret);
       const raw = enrolled.qrCode || "";
       let svgMarkup = "";
       let dataUri = "";
       if (raw.startsWith("data:image/svg+xml;utf-8,")) {
-        svgMarkup = decodeURIComponent(raw.slice("data:image/svg+xml;utf-8,".length));
+        svgMarkup = decodeURIComponent(
+          raw.slice("data:image/svg+xml;utf-8,".length)
+        );
         dataUri = raw;
       } else if (raw.startsWith("data:image/svg+xml,")) {
         svgMarkup = decodeURIComponent(raw.slice("data:image/svg+xml,".length));
@@ -177,9 +179,17 @@ export function AdminSignIn({
               <>
                 <Notice>
                   Scan this QR code in Google Authenticator, Microsoft
-                  Authenticator or another authenticator app, or enter the setup key manually below.
+                  Authenticator or another authenticator app, or enter the setup
+                  key manually below.
                 </Notice>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", margin: "20px 0" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    margin: "20px 0",
+                  }}
+                >
                   {svg ? (
                     <div
                       style={{
@@ -199,12 +209,29 @@ export function AdminSignIn({
                       width={220}
                       height={220}
                       alt="Scan to set up your Balaji Studio authenticator"
-                      style={{ maxWidth: "100%", background: "white", borderRadius: 8 }}
+                      style={{
+                        maxWidth: "100%",
+                        background: "white",
+                        borderRadius: 8,
+                      }}
                     />
                   )}
                   {secret && (
-                    <div style={{ marginTop: 14, textAlign: "center", width: "100%" }}>
-                      <small style={{ color: "var(--muted, #64748b)", display: "block", marginBottom: 6, fontSize: "11px" }}>
+                    <div
+                      style={{
+                        marginTop: 14,
+                        textAlign: "center",
+                        width: "100%",
+                      }}
+                    >
+                      <small
+                        style={{
+                          color: "var(--muted, #64748b)",
+                          display: "block",
+                          marginBottom: 6,
+                          fontSize: "11px",
+                        }}
+                      >
                         Manual key (if you cannot scan the QR code):
                       </small>
                       <code
@@ -323,7 +350,7 @@ function CodeField({
       <input
         required
         inputMode="numeric"
-        pattern="[0-9]{8}"
+        pattern="[0-9]"
         maxLength={8}
         value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
