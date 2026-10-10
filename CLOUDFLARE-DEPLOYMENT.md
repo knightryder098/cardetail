@@ -9,13 +9,20 @@ Connect `knightryder098/cardetail` in Worker Settings → Builds.
 Set the production branch to `master`. Disable preview/non-production builds.
 Use root directory `/`, Node.js 24, build command `npm run build:worker`, and
 deploy command `npm run deploy:worker`. Production builds should run tests and
-type checking before the Worker build. Cloudflare’s deployment token belongs
+type checking before the Worker build. The compiled Worker is then started
+locally to verify that its session endpoint runs and rejects cross-origin
+authentication requests before deployment. This check uses no production
+database or email delivery. Cloudflare’s deployment token belongs
 in its build settings, never in GitHub source or the application bundle.
 
 Updates pushed or merged into `master` create a build and deploy on success.
 Other branches must not have build triggers. A failed build must retain the
 last successful deployment. An already-open browser tab may require a refresh
 to load the new application version.
+
+Next.js is pinned to 16.3.8 with OpenNext 1.20.10. Upgrade these together only
+after checking adapter support and passing the compiled Worker runtime check;
+a successful Next.js compilation alone does not confirm Worker compatibility.
 
 ## Runtime settings
 
