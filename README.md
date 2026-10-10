@@ -29,6 +29,8 @@ The browser suite needs Chromium. If Playwright does not find its managed browse
 
 Copy `.env.example` to `.env.local`, set `APP_MODE=live`, configure `APP_ORIGIN`, `DATABASE_URL`, Supabase Auth, `CRON_SECRET`, and the mapped owner authentication UUID, then apply `supabase/migrations/001_platform.sql` to the configured database. Live requests require the configured origin, Supabase contact verification, staff membership, and MFA. The PostgreSQL adapter is prepared for the first studio aggregate and its allocation/ledger constraints; it has not been connected to a client Supabase project in this workspace.
 
+For first-time admin access, open `/admin` and choose **First-time setup / forgot password**. Use the existing mapped owner's email, verify the emailed code, scan and verify the authenticator QR code, then choose a password of at least 12 characters. Existing authenticator enrollment must be verified during password reset. Setup does not create users or grant staff roles; the account UUID must already match an active Team & access entry. `OWNER_AUTH_USER_ID` seeds the first owner and does not change an existing stored mapping.
+
 Payment checkout is deliberately disabled. Manual collection is available to an owner in the dashboard. Notification events are recorded in the outbox, while a delivery worker and provider templates still need to be supplied. Replace the illustrative prices, contact details, products, policies, and legal copy before publishing a real studio catalogue.
 
 See [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md) for the completed scope and the release work that remains.
