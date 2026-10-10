@@ -12,3 +12,9 @@ docs/
 supabase
 car-detailing-config-platform
 test
+gg.crt
+.open-next/
+.wrangler/
+.dev.vars*
+supabase_logs*.json
+*.key

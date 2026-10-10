@@ -1,6 +1,13 @@
 import type { NextConfig } from 'next';
+import path from 'node:path';
 const config: NextConfig = {
+  ...(process.env.CLOUDFLARE_BUILD === '1' ? { output: 'standalone' as const } : {}),
+  outputFileTracingExcludes: { '/*': ['./.env*', './.data/**', './supabase_logs.json', './gg.crt'] },
   serverExternalPackages: ['pg', 'exceljs'],
+  ...(process.env.CLOUDFLARE_BUILD === '1' ? { webpack(config) {
+      config.resolve.alias[path.resolve('src/server/sqlite-store.ts')] = path.resolve('src/server/sqlite-store.worker.ts');
+    return config;
+  } } satisfies Partial<NextConfig> : {}),
   async headers() {
     return [{ source: '/(.*)', headers: [
       { key: 'X-Content-Type-Options', value: 'nosniff' },
