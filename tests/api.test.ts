@@ -1,11 +1,13 @@
 import { beforeAll, expect, it } from 'vitest';
 import { handleApi } from '@/server/api';
 import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { store } from '@/server/store';
 import { resolveQuote, availableSlots } from '@/server/domain';
 import { holdBooking } from '@/server/bookings';
 import { addDays, localDay } from '@/lib/format';
-beforeAll(() => { process.env.APP_MODE = 'demo'; process.env.DEMO_DATABASE_PATH = `/private/tmp/crystal-api-${randomUUID()}.sqlite`; });
+beforeAll(() => { process.env.APP_MODE = 'demo'; process.env.DEMO_DATABASE_PATH = path.join(tmpdir(), `balaji-api-${randomUUID()}.sqlite`); });
 const call = (path: string, method = 'GET', body?: unknown, cookie?: string, extra: Record<string, string> = {}) => handleApi(new Request(`http://localhost:3000/api/v1/${path}`, { method, headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', ...(cookie ? { Cookie: cookie } : {}), ...extra }, ...(body ? { body: JSON.stringify(body) } : {}) }));
 it('rejects anonymous dashboard access', async () => { expect((await call('admin/data')).status).toBe(401); });
 it('rejects a mutation from another origin', async () => { expect((await call('auth/demo-owner', 'POST', {}, undefined, { Origin: 'https://evil.example' })).status).toBe(403); });
