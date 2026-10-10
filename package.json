@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "build:worker": "node scripts/check-release-source.mjs check && npm test && npm run typecheck && CLOUDFLARE_BUILD=1 opennextjs-cloudflare build && node scripts/prepare-worker-env.mjs && node scripts/check-worker-artifacts.mjs && node scripts/check-release-source.mjs record",
+    "build:worker": "node scripts/check-release-source.mjs check && npm test && npm run typecheck && CLOUDFLARE_BUILD=1 opennextjs-cloudflare build && node scripts/prepare-worker-env.mjs && node scripts/check-worker-artifacts.mjs && node scripts/smoke-worker.mjs && node scripts/check-release-source.mjs record",
     "preview:worker": "opennextjs-cloudflare preview",
     "deploy:worker": "node scripts/check-release-source.mjs deploy && node scripts/check-worker-config.mjs && node scripts/check-worker-artifacts.mjs && opennextjs-cloudflare deploy",
     "check:worker": "node scripts/check-worker-config.mjs"
