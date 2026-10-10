@@ -10,6 +10,7 @@ import "@fontsource/manrope/700.css";
 import "./globals.css";
 import "@/styles/booking.css";
 import "@/styles/admin.css";
+// lola
 export const metadata: Metadata = {
   title: {
     default: "Balaji Studio — Precision car care",
