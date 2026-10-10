@@ -1,0 +1,5 @@
+import { expect, it } from 'vitest';
+import { assertEnvironment } from '@/server/auth';
+it('accepts the loopback Host origin when Next reconstructs an internal localhost URL',()=>{process.env.APP_MODE='demo'; const r=new Request('http://localhost:3001/api/v1/quotes',{method:'POST',headers:{host:'127.0.0.1:3001',origin:'http://127.0.0.1:3001'}});expect(()=>assertEnvironment(r)).not.toThrow();});
+it('rejects a non-loopback Host even when the reconstructed URL is localhost',()=>{process.env.APP_MODE='demo';const r=new Request('http://localhost:3001/api/v1/quotes',{method:'POST',headers:{host:'evil.example',origin:'http://evil.example'}});expect(()=>assertEnvironment(r)).toThrow();});
+it('allows a trusted expiry job without browser Origin but rejects an invalid job secret',()=>{process.env.APP_MODE='demo';process.env.CRON_SECRET='test-secret';const good=new Request('http://localhost:3001/api/v1/system/expire',{method:'POST',headers:{authorization:'Bearer test-secret'}});const bad=new Request(good.url,{method:'POST',headers:{authorization:'Bearer wrong'}});expect(()=>assertEnvironment(good)).not.toThrow();expect(()=>assertEnvironment(bad)).toThrow();});

@@ -1,0 +1,52 @@
+import { test, expect } from '@playwright/test';
+test('homepage SHOP entrance works with reduced motion and on mobile', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' }); await page.setViewportSize({ width: 360, height: 800 }); await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'MAKE EVERY DRIVE SHINE.' })).toBeVisible();
+  await page.getByRole('link', { name: 'Enter shop and browse detailing services' }).click();
+  await expect(page.getByRole('heading', { name: 'GOOD CARE. GREAT FEELING.' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+test('customer selects multiple services and books a combined monthly pack', async ({ page }) => {
+  await page.goto('/booking');
+  await page.getByLabel('Car make').selectOption('Maruti Suzuki'); await page.getByLabel('Car model').selectOption('veh-swift'); await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  const exterior = page.getByRole('button', { name: /Exterior Detail/ }); const interior = page.getByRole('button', { name: /Interior Detail/ });
+  await exterior.click(); await interior.click();
+  await expect(exterior).toHaveAttribute('aria-pressed', 'true'); await expect(interior).toHaveAttribute('aria-pressed', 'true');
+  await interior.click(); await expect(interior).toHaveAttribute('aria-pressed', 'false'); await interior.click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: /Monthly care/ }).click(); await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.locator('button[aria-label^="Choose date"]:not(:disabled)').first().click(); await page.getByRole('button', { name: /Available at/ }).first().click(); await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByLabel('Full name').fill('Demo customer'); await page.getByLabel('Email address').fill(`customer-${Date.now()}@example.com`); await page.getByLabel('Mobile number').fill('9000000000'); await page.getByLabel('I agree to the booking terms').check();
+  await page.getByRole('button', { name: 'Send verification code' }).click();
+  const code = await page.getByTestId('demo-code').textContent(); await page.getByLabel('Verification code').fill(code!); await page.getByRole('button', { name: 'Verify email' }).click();
+  await page.getByRole('button', { name: 'Confirm appointment' }).click();
+  await expect(page.getByRole('heading', { name: "YOU’RE ALL BOOKED." })).toBeVisible(); await expect(page.getByText('Your pack activates after payment at the studio.')).toBeVisible();
+  await expect(page.getByText('Exterior Detail + Interior Detail · Normal', { exact: true })).toBeVisible();
+  await expect(page.getByText('3 hr', { exact: true })).toBeVisible();
+});
+test('a failed availability request removes times from the previous day', async ({ page }) => {
+  await page.goto('/booking');
+  await page.getByLabel('Car make').selectOption('Maruti Suzuki'); await page.getByLabel('Car model').selectOption('veh-swift'); await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: /Exterior Detail/ }).click(); await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  const days = page.locator('button[aria-label^="Choose date"]:not(:disabled)'); await days.first().click();
+  await expect(page.getByRole('button', { name: /Available at/ }).first()).toBeVisible();
+  await page.route('**/api/v1/availability?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Availability temporarily unavailable' } }) }));
+  await days.nth(1).click();
+  await expect(page.getByText('Availability temporarily unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Available at/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
+});
+test('owner can edit a draft and publish it without changing public content early', async ({ page }) => {
+  await page.goto('/admin'); await page.getByRole('button', { name: 'Open demo dashboard' }).click();
+  await expect(page.getByRole('heading', { name: 'A GOOD DAY FOR GREAT CARE.' })).toBeVisible();
+  await page.getByRole('link', { name: 'Site editor', exact: true }).click();
+  const originalTagline = await page.getByLabel('Tagline').inputValue();
+  const title = `Precision care ${Date.now()}`; await page.getByLabel('Tagline').fill(title); await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByRole('status').filter({hasText:'Draft saved'})).toBeVisible(); await page.getByRole('button', { name: 'Publish changes', exact: true }).click(); await expect(page.getByRole('status').filter({hasText:'Published'})).toBeVisible();
+  await page.goto('/'); await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
+  await page.goto('/admin'); await page.getByRole('link', { name: 'Site editor', exact: true }).click();
+  await page.getByLabel('Tagline').fill(originalTagline); await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByRole('status').filter({hasText:'Draft saved'})).toBeVisible(); await page.getByRole('button', { name: 'Publish changes', exact: true }).click();
+  await expect(page.getByRole('status').filter({hasText:'Published'})).toBeVisible();
+});

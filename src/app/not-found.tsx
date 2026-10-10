@@ -1,0 +1,2 @@
+import Link from 'next/link';
+export default function NotFound() { return <main className="section-wrap empty-state" style={{minHeight:'80vh',display:'flex',flexDirection:'column',justifyContent:'center'}}><div className="section-kicker" style={{justifyContent:'center'}}>404 / A DIFFERENT TURN</div><h1 style={{fontSize:50,margin:'25px 0'}}>LET’S GET YOU<br/>BACK ON TRACK.</h1><p>This page or treatment is unavailable.</p><Link className="btn btn-primary" href="/services" style={{alignSelf:'center'}}>Explore treatments</Link></main>; }
