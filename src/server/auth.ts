@@ -38,7 +38,9 @@ function supabase() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_PUBLISHABLE_KEY) throw new AppError('AUTH_NOT_CONFIGURED', 'Contact verification is awaiting provider setup.', 503);
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 }
-function staffRole(s: State, userId: string) { return s.staff.find(m => m.active && m.userId === userId); }
+function staffRole(s: State, userId: string, email?: string) {
+  return s.staff.find(m => m.active && (m.userId === userId || (!!email && !m.userId && m.email.toLowerCase() === email.toLowerCase())));
+}
 export async function actorFromRequest(request: Request): Promise<Session | null> {
   const cookie = request.headers.get('cookie')?.split(';').map(v => v.trim()).find(v => v.startsWith('cd-session='))?.slice(11);
   if (!cookie) return null;
@@ -94,7 +96,15 @@ export async function adminPassword(email: string, password: string) {
   rateLimit(`password:${hash(email)}`, 5, 600000);
   const client = supabase(); const { data, error } = await client.auth.signInWithPassword({ email, password });
   if (error || !data.session || !data.user) throw new AppError('SIGN_IN_FAILED', 'Email or password is incorrect.', 401);
-  const s = await store().read(); const member = staffRole(s, data.user.id);
+  const s = await store().read();
+  let member = staffRole(s, data.user.id, data.user.email ?? email);
+  if (member && !member.userId && data.user) {
+    await store().transaction(state => {
+      const target = state.staff.find(m => m.id === member!.id);
+      if (target && !target.userId) target.userId = data.user.id;
+    });
+    member = { ...member, userId: data.user.id };
+  }
   if (!member) throw new AppError('FORBIDDEN', 'This account does not have dashboard access.', 403);
   const { data: factors, error: factorError } = await client.auth.mfa.listFactors();
   if (factorError) throw new AppError('AUTH_UNAVAILABLE', 'Please try signing in again.', 503);
@@ -110,7 +120,14 @@ async function adminClient(actor: Session) {
   const client = supabase();
   const { data, error } = await client.auth.getUser(actor.accessToken);
   const state = await store().read();
-  const member = data.user && staffRole(state, data.user.id);
+  let member = data.user && staffRole(state, data.user.id, data.user.email ?? actor.email);
+  if (member && !member.userId && data.user) {
+    await store().transaction(s => {
+      const target = s.staff.find(m => m.id === member!.id);
+      if (target && !target.userId) target.userId = data.user!.id;
+    });
+    member = { ...member, userId: data.user.id };
+  }
   if (error || !member) throw new AppError('FORBIDDEN', 'This account does not have dashboard access. Ask the owner to check Team & access.', 403);
   const restored = await client.auth.setSession({ access_token: actor.accessToken, refresh_token: actor.refreshToken });
   if (restored.error || !restored.data.session) throw new AppError('VERIFICATION_REQUIRED', 'Please sign in again.', 401);

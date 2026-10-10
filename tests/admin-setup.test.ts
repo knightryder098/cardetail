@@ -4,6 +4,7 @@ const m = vi.hoisted(() => ({ read: vi.fn(), transaction: vi.fn(), signInWithPas
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ auth: m }) }));
 vi.mock('@/server/store', () => ({ isDemo: () => false, store: () => m }));
 import { adminPassword, enrollAdminMfa, setAdminPassword, requestAdminSetup, confirmMfa } from '@/server/auth';
+import { validateStaffAccess } from '@/server/admin-api';
 import { handleApi } from '@/server/api';
 let state: State;
 let actor: Session;
@@ -85,3 +86,32 @@ it('returns the enrollment QR through a non-cacheable authenticated endpoint', a
   expect(response.headers.get('cache-control')).toBe('private, no-store');
   expect(await response.json()).toEqual({ factorId: 'factor', qrCode: '<svg/>' });
 });
+it('validates staff access rules allowing pending invited members with null userId', () => {
+  const staff = [
+    { id: '1', name: 'Owner', email: 'owner@example.com', role: 'owner' as const, active: true, userId: 'uuid-1' },
+    { id: '2', name: 'Staff', email: 'staff@example.com', role: 'staff' as const, active: true, userId: null },
+  ];
+  expect(() => validateStaffAccess(staff, true)).not.toThrow();
+
+  // Rejects duplicate emails
+  expect(() => validateStaffAccess([
+    { id: '1', name: 'Owner', email: 'dup@example.com', role: 'owner' as const, active: true, userId: 'uuid-1' },
+    { id: '2', name: 'Staff', email: 'dup@example.com', role: 'staff' as const, active: true, userId: null },
+  ], true)).toThrow('Team member email addresses must be unique.');
+
+  // Rejects removing last active mapped owner
+  expect(() => validateStaffAccess([
+    { id: '1', name: 'Staff', email: 'staff@example.com', role: 'staff' as const, active: true, userId: 'uuid-1' },
+  ], true)).toThrow('Keep at least one active mapped owner.');
+});
+it('auto-links invited staff member userId when logging in with verified credentials', async () => {
+  state.staff.push({ id: 'staff-invited', name: 'Invited Staff', email: 'invited@example.com', role: 'staff', active: true, userId: null });
+  m.signInWithPassword.mockResolvedValue({
+    data: { user: { id: 'new-auth-uuid', email: 'invited@example.com' }, session: { access_token: 'access', refresh_token: 'refresh' } },
+    error: null,
+  });
+  const result = await adminPassword('invited@example.com', 'password');
+  expect(result.session.customerId).toBe('staff-invited');
+  expect(state.staff.find(s => s.id === 'staff-invited')?.userId).toBe('new-auth-uuid');
+});
+

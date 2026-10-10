@@ -5,7 +5,11 @@ import { createState } from './seed';
 import { SqliteStore } from './sqlite-store';
 import { getWorkerDatabase } from './worker-runtime';
 export { SqliteStore } from './sqlite-store';
-export interface Store { read(): Promise<State>; transaction<T>(fn: (s: State) => T): Promise<T> }
+export interface Store {
+  read(): Promise<State>;
+  transaction<T>(fn: (s: State) => T): Promise<T>;
+  resolveAuthUser?(email: string): Promise<string | null>;
+}
 class PostgresStore implements Store {
   constructor(private workerConnection?: string) {}
   private createPool() {
@@ -19,6 +23,32 @@ class PostgresStore implements Store {
         ...(process.env.DATABASE_CA_CERT ? { ca: process.env.DATABASE_CA_CERT.replace(/\\n/g, '\n') } : {}),
       },
     });
+  }
+  async resolveAuthUser(email: string): Promise<string | null> {
+    const pool = this.createPool();
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@')) return null;
+      const existing = await pool.query('SELECT id FROM auth.users WHERE lower(email) = $1 LIMIT 1', [cleanEmail]);
+      if (existing.rows[0]?.id) return existing.rows[0].id;
+      const inserted = await pool.query(
+        `INSERT INTO auth.users (
+          instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+          raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+        ) VALUES (
+          '00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated',
+          $1, '', now(),
+          '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
+        ) ON CONFLICT (email) DO UPDATE SET updated_at = now() RETURNING id`,
+        [cleanEmail]
+      );
+      return inserted.rows[0]?.id ?? null;
+    } catch (err) {
+      console.error('Failed to resolve auth user', email, err);
+      return null;
+    } finally {
+      await pool.end();
+    }
   }
   async read(): Promise<State> {
     const pool = this.createPool();
@@ -54,5 +84,5 @@ export function store(): Store {
     else if (process.env.DATABASE_URL) globalStore.crystalStore = new PostgresStore();
     else globalStore.crystalStore = { read: async () => createState(false), transaction: async () => { throw new Error('LIVE_DATABASE_NOT_CONFIGURED'); } };
   }
-  return globalStore.crystalStore;
+  return globalStore.crystalStore!;
 }
