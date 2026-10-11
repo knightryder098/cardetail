@@ -70,14 +70,7 @@ test('owner can publish consultation-only mode and restore the complete booking 
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Draft saved' })).toBeVisible();
   await page.getByRole('link', { name: 'Studio schedule', exact: true }).click();
-  await expect(page.getByText(/1 offered price combinations need a reviewed price/)).toBeVisible();
-  await page.getByRole('button', { name: 'Publish changes', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: /missing standard .* price/ })).toBeVisible();
-  await page.getByRole('link', { name: 'Pricing matrix', exact: true }).first().click();
-  await page.getByRole('spinbutton', { name: 'Normal standard price', exact: true }).fill(originalPrice);
-  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Draft saved' })).toBeVisible();
-  await page.getByRole('link', { name: 'Studio schedule', exact: true }).click();
+  await expect(page.getByText('Ready to enable online booking.', { exact: true })).toBeVisible();
   const enabled = page.getByLabel('Enable online booking', { exact: true });
   await expect(enabled).toBeChecked();
   await enabled.uncheck();
@@ -98,6 +91,12 @@ test('owner can publish consultation-only mode and restore the complete booking 
   await expect(page.getByRole('status').filter({ hasText: 'Published' })).toBeVisible();
   await page.goto('/booking');
   await expect(page.getByLabel('Car make')).toBeVisible();
+  // The unrelated incomplete price draft stayed private throughout schedule publication.
+  await page.goto('/admin/prices');
+  await expect(page.getByRole('spinbutton', { name: 'Normal standard price', exact: true })).toHaveValue('');
+  await page.getByRole('spinbutton', { name: 'Normal standard price', exact: true }).fill(originalPrice);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Draft saved' })).toBeVisible();
 });
 test('homepage SHOP entrance works with reduced motion and on mobile', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' }); await page.setViewportSize({ width: 360, height: 800 }); await page.goto('/');

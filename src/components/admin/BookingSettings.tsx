@@ -5,12 +5,13 @@ import { validatePublication } from '@/lib/catalogue-validation';
 import { useAdmin } from './context';
 
 export function BookingSettings() {
-  const { draft, edit, busy } = useAdmin();
+  const { draft, edit, busy, data } = useAdmin();
   if (!draft) return null;
 
-  // Check the enabled version even while the current draft is paused.
-  // Publication uses this same validator on the server.
-  const issues = validatePublication({ ...draft, bookingEnabled: true });
+  // Check this page against live offers, not unrelated saved drafts.
+  // Enabling booking requires the dependent pages to be published first.
+  const baseline = data.published ?? { ...draft, services: [], products: [], vehicles: [], plans: [] };
+  const issues = validatePublication({ ...baseline, schedule: draft.schedule, bookingEnabled: true });
   const missingPrices = issues.filter(issue => /: missing .* price\.$/.test(issue)).length;
 
   return (

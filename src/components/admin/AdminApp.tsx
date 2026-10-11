@@ -31,6 +31,8 @@ import { BookingManager } from "./BookingManager";
 import { CatalogueEditors } from "./CatalogueEditors";
 import { SettingsEditors } from "./SettingsEditors";
 import { AdminSignIn } from "./AdminSignIn";
+import { PublicationIssues } from "./PublicationIssues";
+import type { CatalogueIssue } from "@/lib/catalogue-validation";
 const nav = [
   ["overview", "Overview", LayoutDashboard],
   ["bookings", "Appointments", CalendarDays],
@@ -63,6 +65,7 @@ export function AdminApp({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState<CatalogueIssue[]>([]);
   const [dirty, setDirty] = useState(false);
   const [mobile, setMobile] = useState(false);
   const reload = useCallback(async () => {
@@ -92,13 +95,15 @@ export function AdminApp({
     setBusy(true);
     setError("");
     setMessage("");
+    setIssues([]);
     try {
       await task();
       if (refresh) await reload();
       setMessage(success);
       return true;
     } catch (e) {
-      setError((e as Error).message);
+      if (e instanceof ApiError && e.details?.issues?.length) setIssues(e.details.issues);
+      else setError((e as Error).message);
       return false;
     } finally {
       setBusy(false);
@@ -135,6 +140,7 @@ export function AdminApp({
       () =>
         api("admin/catalogue", "PUT", {
           catalogue: draft,
+          section,
           baseRevisionId: data.activeRevisionId,
           draftVersion: data.draftVersion,
         }),
@@ -151,6 +157,7 @@ export function AdminApp({
           "PUT",
           {
             catalogue: draft,
+            section,
             baseRevisionId: data.activeRevisionId,
             draftVersion,
           }
@@ -168,16 +175,17 @@ export function AdminApp({
       }
       try {
         return await api("admin/publish", "POST", {
+          section,
           baseRevisionId: data.activeRevisionId,
           draftVersion,
         });
       } catch (error) {
         if (error instanceof ApiError && error.code === "PUBLICATION_INVALID") {
-          setMessage("Draft saved. Publication was blocked; your live site is unchanged. Resolve the issues below. For missing prices, fill in the pricing matrix or disable the affected offers before publishing.");
+          setMessage("Draft saved. Publication was blocked; your live site is unchanged. Resolve and publish the required setup below, then publish this page again.");
         }
         throw error;
       }
-    }, "Published. Your storefront now reflects these changes.");
+    }, "Published. Only this page’s changes are now live; other saved drafts remain private.");
   }
   if (loading)
     return (
@@ -360,7 +368,7 @@ export function AdminApp({
                   {section === "overview"
                     ? `Welcome back, ${actor.name}. Here’s what’s happening at your studio.`
                     : editable
-                    ? "Make your changes here. Save a draft, then publish when everything looks right."
+                    ? "Save and publish this page independently. Required setup on other pages must be published before enabling an offer."
                     : "All the details that keep your studio moving."}
                 </p>
               </div>
@@ -370,7 +378,7 @@ export function AdminApp({
                     <i />
                     {dirty
                       ? "Unsaved changes"
-                      : `Published v${data.revisions.at(-1)?.number ?? 0}`}
+                      : data.pendingSections?.includes(section) ? "Saved draft changes" : `Published v${data.revisions.at(-1)?.number ?? 0}`}
                   </span>
                   <Link
                     className="btn btn-ghost"
@@ -392,6 +400,7 @@ export function AdminApp({
             </div>
             {message && <Notice>{message}</Notice>}
             {error && <Notice error>{error}</Notice>}
+            <PublicationIssues issues={issues}/>
             {staffOnly && !["overview", "bookings"].includes(section) ? (
               <Notice error>
                 Your role has access to assigned appointments only.

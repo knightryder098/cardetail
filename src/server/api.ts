@@ -51,6 +51,6 @@ export async function handleApi(request: Request): Promise<Response> {
   } catch (error) {
     const e = error instanceof AppError ? error : error instanceof z.ZodError ? new AppError('VALIDATION_ERROR', error.issues.map(i => `${i.path.join('.') || 'Request'}: ${i.message}`).slice(0, 4).join('; ')) : error && typeof error === 'object' && 'code' in error && error.code === '23P01' ? new AppError('SLOT_UNAVAILABLE', 'That time was just booked. Choose another available time.', 409) : new AppError('SERVICE_UNAVAILABLE', 'This action is temporarily unavailable. Please try again.', 503);
     if (!(error instanceof AppError) && !(error instanceof z.ZodError)) console.error('Request failed', requestId, error instanceof Error ? error.name : 'Unknown error');
-    return Response.json({ error: { code: e.code, message: e.message, requestId } }, { status: e.status, headers: { 'Cache-Control': 'private, no-store' } });
+    return Response.json({ error: { code: e.code, message: e.message, requestId, ...(e.details ? { details: e.details } : {}) } }, { status: e.status, headers: { 'Cache-Control': 'private, no-store' } });
   }
 }
