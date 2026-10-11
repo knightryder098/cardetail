@@ -1,0 +1,34 @@
+import { expect, test } from '@playwright/test';
+
+test('services validates before saving and shares persisted prices with pricing matrix', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Open demo dashboard' }).click();
+  await expect(page.getByRole('link', { name: 'Services & tiers', exact: true })).toBeVisible();
+  await page.goto('/admin/services');
+  const price = page.getByLabel(/^Standard One time price \(₹\)/);
+  const originalPrice = await price.inputValue();
+  const before = await (await page.request.get('/api/v1/admin/data')).json();
+  await price.fill('');
+  await page.getByLabel('Treatment minutes', { exact: true }).fill('0');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.locator('.admin-content [role="alert"]')).toContainText('minutes');
+  expect((await (await page.request.get('/api/v1/admin/data')).json()).draftVersion).toBe(before.draftVersion);
+  await page.getByLabel('Treatment minutes', { exact: true }).fill(String(before.draft.services[0].tiers[0].minutes));
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.locator('.admin-content [role="alert"]')).toContainText('missing standard One time price');
+  await price.fill('650');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Draft saved');
+  await page.reload();
+  await expect(price).toHaveValue('650');
+  await page.goto('/admin/prices');
+  await expect(page.getByLabel('Normal standard price', { exact: true })).toHaveValue('650');
+  await page.goto('/admin/services');
+  await page.getByRole('button', { name: 'Publish changes', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Published');
+  const published = await (await page.request.get('/api/v1/admin/data')).json();
+  expect(published.published.services[0].tiers[0].prices.standard.one_time).toBe(65000);
+  await price.fill(originalPrice);
+  await page.getByRole('button', { name: 'Publish changes', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Published');
+});

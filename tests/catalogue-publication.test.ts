@@ -44,3 +44,20 @@ it('requires published prices when enabling a plan, and provides every affected 
   await publish('packages');
   expect(state.revisions.at(-1)!.catalogue.plans.find(p => p.code === 'monthly')!.enabled).toBe(true);
 });
+
+it('rejects incomplete service prices before saving without changing the draft', async () => {
+  const edited = structuredClone(state.draft);
+  edited.services[0].tiers[0].prices.standard.one_time = null;
+  const before = structuredClone(state.draft);
+  await expect(handleAdmin(new Request('https://example.com/api/v1/admin/catalogue', { method: 'PUT' }), 'admin/catalogue', owner, { section: 'services', catalogue: edited, baseRevisionId: state.activeRevisionId, draftVersion: state.draftVersion })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', details: { issues: expect.arrayContaining([expect.objectContaining({ serviceId: edited.services[0].id, pricingClass: 'standard', planCode: 'one_time' })]) } });
+  expect(state.draft).toEqual(before);
+});
+it('publishes service prices with service details while keeping other pages private', async () => {
+  const edited = structuredClone(state.draft);
+  edited.services[0].tiers[0].prices.standard.one_time = 65000;
+  edited.site.name = 'Unrelated unsaved name';
+  await handleAdmin(new Request('https://example.com/api/v1/admin/catalogue', { method: 'PUT' }), 'admin/catalogue', owner, { section: 'services', catalogue: edited, baseRevisionId: state.activeRevisionId, draftVersion: state.draftVersion });
+  await publish('services');
+  expect(state.revisions.at(-1)!.catalogue.services[0].tiers[0].prices.standard.one_time).toBe(65000);
+  expect(state.revisions.at(-1)!.catalogue.site.name).not.toBe('Unrelated unsaved name');
+});

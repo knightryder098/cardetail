@@ -29,12 +29,12 @@ it('saves prices without changing service descriptions or other pages', () => {
   expect(result.services[0].name).toBe(saved.services[0].name);
   expect(result.site).toEqual(saved.site);
 });
-it('preserves saved prices when saving service information', () => {
+it('saves service prices together with service information', () => {
   const saved = createCatalogue(true);
   const edited = structuredClone(saved);
   edited.services[0].name = 'Exterior care';
   edited.services[0].tiers[0].prices.standard.one_time = 1;
   const result = mergeCatalogueSection(saved, edited, 'services');
   expect(result.services[0].name).toBe('Exterior care');
-  expect(result.services[0].tiers[0].prices).toEqual(saved.services[0].tiers[0].prices);
+  expect(result.services[0].tiers[0].prices.standard.one_time).toBe(1);
 });

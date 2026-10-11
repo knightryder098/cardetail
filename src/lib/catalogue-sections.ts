@@ -1,21 +1,21 @@
 import { z } from 'zod';
-import type { Catalogue, Tier } from './types';
+import type { Catalogue } from './types';
 import { catalogueSchema, serviceSchema, tierSchema } from './schema';
 
 export const catalogueSections = ['services', 'products', 'vehicles', 'prices', 'packages', 'schedule', 'site'] as const;
 export const catalogueSectionSchema = z.enum(catalogueSections);
 export type CatalogueSection = typeof catalogueSections[number];
-const servicesSchema = z.array(serviceSchema.extend({ tiers: z.array(tierSchema.omit({ prices: true }).strip()).min(1).max(3) })).max(50);
+const servicesSchema = z.array(serviceSchema).max(50);
 const pricingSchema = catalogueSchema.pick({ taxMode: true, taxBps: true }).strip().extend({
   services: z.array(z.object({ id: z.string(), tiers: z.array(tierSchema.pick({ code: true, prices: true }).strip()).min(1).max(3) })).max(50),
 });
-const blankPrices = (): Tier['prices'] => ({ standard: { one_time: null, monthly: null, annual: null }, premium: { one_time: null, monthly: null, annual: null }, luxury: { one_time: null, monthly: null, annual: null } });
+
 
 export function catalogueSectionSnapshot(c: Catalogue, section: CatalogueSection): unknown {
   if (section === 'packages') return c.plans;
   if (section === 'schedule') return { schedule: c.schedule, bookingEnabled: c.bookingEnabled };
   if (section === 'prices') return { taxMode: c.taxMode, taxBps: c.taxBps, services: c.services.map(s => ({ id: s.id, tiers: s.tiers.map(t => ({ code: t.code, prices: t.prices })) })) };
-  if (section === 'services') return c.services.map(s => ({ ...s, tiers: s.tiers.map(({ prices: _prices, ...tier }) => tier) }));
+  if (section === 'services') return c.services;
   return c[section];
 }
 
@@ -30,14 +30,7 @@ export function mergeCatalogueSection(base: Catalogue, input: unknown, section: 
     }
   } else if (section === 'services') {
     const { services } = z.object({ services: servicesSchema }).parse(input);
-    const source = z.object({ services: z.array(z.object({ id: z.string(), tiers: z.array(z.object({ code: z.string(), prices: z.unknown().optional() })) })) }).parse(input);
-    // Editing service information must not overwrite another page's saved prices.
-    next.services = services.map(service => ({ ...service, tiers: service.tiers.map(tier => {
-      const existing = base.services.find(s => s.id === service.id)?.tiers.find(t => t.code === tier.code);
-      // New services/tiers need their own saved pricing when first published.
-      const addedPrices = source.services.find(s => s.id === service.id)?.tiers.find(t => t.code === tier.code)?.prices;
-      return { ...tier, prices: structuredClone(existing?.prices ?? tierSchema.shape.prices.parse(addedPrices ?? blankPrices())) };
-    }) }));
+    next.services = services;
   } else if (section === 'packages') {
     next.plans = catalogueSchema.pick({ plans: true }).strip().parse(input).plans;
   } else if (section === 'schedule') {

@@ -32,6 +32,7 @@ import { CatalogueEditors } from "./CatalogueEditors";
 import { SettingsEditors } from "./SettingsEditors";
 import { AdminSignIn } from "./AdminSignIn";
 import { PublicationIssues } from "./PublicationIssues";
+import { serviceSaveIssues } from '@/lib/service-validation';
 import type { CatalogueIssue } from "@/lib/catalogue-validation";
 const nav = [
   ["overview", "Overview", LayoutDashboard],
@@ -134,8 +135,16 @@ export function AdminApp({
     setDirty(true);
     setMessage("");
   }
+  function validateServicePage() {
+    if (section !== 'services' || !draft || !data) return true;
+    const required = serviceSaveIssues(draft, data.published ?? data.draft!);
+    setIssues(required);
+    setError('');
+    setMessage('');
+    return required.length === 0;
+  }
   async function save() {
-    if (!draft || !data) return;
+    if (!draft || !data || !validateServicePage()) return;
     await run(
       () =>
         api("admin/catalogue", "PUT", {
@@ -148,7 +157,7 @@ export function AdminApp({
     );
   }
   async function publish() {
-    if (!draft || !data) return;
+    if (!draft || !data || !validateServicePage()) return;
     await run(async () => {
       let draftVersion = data.draftVersion;
       if (dirty) {
