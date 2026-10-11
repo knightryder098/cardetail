@@ -10,6 +10,7 @@ import { authorize } from './authorization';
 import { audit, changeBooking, confirmBooking, holdBooking, ownedBooking, packageBalance, recordPayment, rescheduleBooking } from './bookings';
 import { resolveQuote, validatePublication } from './domain';
 import { exportWorkbook } from './reports';
+import { invalidatePublicData } from './public-data';
 export function presentBooking(b: Booking, actor: Session): Booking {
     if (actor.role !== 'staff') return b;
     const copy = structuredClone(b); copy.email = copy.email.replace(/^([^@])[^@]*(@.*)$/, '$1…$2'); copy.phone = copy.phone ? '••••' + copy.phone.slice(-4) : '';
@@ -43,11 +44,15 @@ export async function handleAdmin(request: Request, path: string, actor: Session
   }
   if (path === 'admin/publish' && request.method === 'POST') {
     authorize(s, a, 'catalog.publish'); const input = z.object({ baseRevisionId: z.string().nullable(), draftVersion: z.number().int().nonnegative() }).strict().parse(body);
-    return Response.json(await store().transaction(s => { if (s.activeRevisionId !== input.baseRevisionId || s.draftBaseRevisionId !== input.baseRevisionId || (s.draftVersion ?? 0) !== input.draftVersion) throw new AppError('REVISION_CONFLICT', 'Another editor changed the draft. Reload before publishing.', 409); const errors = validatePublication(s.draft); if (s.bookings.some(b => ['confirmed', 'in_progress'].includes(b.status) && new Date(b.blockedUntil) > new Date() && b.bay > s.draft.schedule.bays)) errors.push('Reschedule appointments in removed bays before reducing studio capacity.'); if (errors.length) throw new AppError('PUBLICATION_INVALID', errors.slice(0, 8).join(' '), 422); const r = { id: randomUUID(), number: (s.revisions.at(-1)?.number ?? 0) + 1, catalogue: structuredClone(s.draft), at: new Date().toISOString(), author: a.name }; s.revisions.push(r); s.activeRevisionId = r.id; s.draftBaseRevisionId = r.id; s.draftVersion = input.draftVersion + 1; audit(s, a.name, 'catalogue.published', `Revision ${r.number}`); return { revision: r.number }; }));
+    const published = await store().transaction(s => { if (s.activeRevisionId !== input.baseRevisionId || s.draftBaseRevisionId !== input.baseRevisionId || (s.draftVersion ?? 0) !== input.draftVersion) throw new AppError('REVISION_CONFLICT', 'Another editor changed the draft. Reload before publishing.', 409); const errors = validatePublication(s.draft); if (s.bookings.some(b => ['confirmed', 'in_progress'].includes(b.status) && new Date(b.blockedUntil) > new Date() && b.bay > s.draft.schedule.bays)) errors.push('Reschedule appointments in removed bays before reducing studio capacity.'); if (errors.length) throw new AppError('PUBLICATION_INVALID', errors.slice(0, 8).join(' '), 422); const r = { id: randomUUID(), number: (s.revisions.at(-1)?.number ?? 0) + 1, catalogue: structuredClone(s.draft), at: new Date().toISOString(), author: a.name }; s.revisions.push(r); s.activeRevisionId = r.id; s.draftBaseRevisionId = r.id; s.draftVersion = input.draftVersion + 1; audit(s, a.name, 'catalogue.published', `Revision ${r.number}`); return { revision: r.number }; });
+    await invalidatePublicData();
+    return Response.json(published);
   }
   if (path === 'admin/rollback' && request.method === 'POST') {
     authorize(s, a, 'catalog.publish'); const { revisionId } = z.object({ revisionId: z.string().uuid() }).strict().parse(body);
-    return Response.json(await store().transaction(s => { const prior = requireValue(s.revisions.find(r => r.id === revisionId)); const errors = validatePublication(prior.catalogue); if (errors.length) throw new AppError('PUBLICATION_INVALID', errors.join(' '), 422); const next = { ...structuredClone(prior), id: randomUUID(), number: (s.revisions.at(-1)?.number ?? 0) + 1, at: new Date().toISOString(), author: a.name }; s.revisions.push(next); s.activeRevisionId = next.id; s.draftBaseRevisionId = next.id; s.draft = structuredClone(next.catalogue); audit(s, a.name, 'catalogue.rollback', `Restored revision ${prior.number} as ${next.number}`); return { revision: next.number }; }));
+    const published = await store().transaction(s => { const prior = requireValue(s.revisions.find(r => r.id === revisionId)); const errors = validatePublication(prior.catalogue); if (errors.length) throw new AppError('PUBLICATION_INVALID', errors.join(' '), 422); const next = { ...structuredClone(prior), id: randomUUID(), number: (s.revisions.at(-1)?.number ?? 0) + 1, at: new Date().toISOString(), author: a.name }; s.revisions.push(next); s.activeRevisionId = next.id; s.draftBaseRevisionId = next.id; s.draft = structuredClone(next.catalogue); audit(s, a.name, 'catalogue.rollback', `Restored revision ${prior.number} as ${next.number}`); return { revision: next.number }; });
+    await invalidatePublicData();
+    return Response.json(published);
   }
   if (path === 'admin/staff' && request.method === 'PUT') {
     if (!isDemo() && !s.staff.some(m => m.id === a.customerId && m.active && m.role === 'owner')) throw new AppError('FORBIDDEN', 'Only an active owner can manage team access.', 403);

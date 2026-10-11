@@ -6,7 +6,7 @@ import { AppError, requireValue } from './errors';
 import { actorFromRequest, adminPassword, adminMfaStatus, enrollAdminMfa, setAdminPassword, requestAdminSetup, assertEnvironment, confirmMfa, confirmVerification, demoOwner, rateLimit, requestVerification, sessionCookie } from './auth';
 import { availableSlots, resolveQuote, resolvePackageQuote } from './domain';
 import { changeBooking, confirmBooking, expireHolds, holdBooking, ownedBooking, packageBalance, rescheduleBooking } from './bookings';
-import { projectPublic } from './public-data';
+import { publicData } from './public-data';
 import { handleAdmin } from './admin-api';
 import { currentBookingState } from './current-state';
 export async function handleApi(request: Request): Promise<Response> {
@@ -16,10 +16,11 @@ export async function handleApi(request: Request): Promise<Response> {
     rateLimit(`path:${path.split('/')[0]}:${request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'local'}`, path.startsWith('public') ? 300 : 100);
     let body: unknown = {};
     if (['POST', 'PUT', 'PATCH'].includes(request.method)) { const raw = await request.text(); if (raw.length > 500000) throw new AppError('PAYLOAD_TOO_LARGE', 'This request is too large.', 413); try { body = raw ? JSON.parse(raw) : {}; } catch { throw new AppError('VALIDATION_ERROR', 'A valid JSON request is required.'); } }
-    const actor = await actorFromRequest(request);
+    const isPublicRead = path.startsWith('public/') && request.method === 'GET';
+    const actor = isPublicRead ? null : await actorFromRequest(request);
     let response: Response | null = null;
     if (path === 'session' && request.method === 'GET') response = Response.json({ actor: actor ? { name: actor.name, email: actor.email, role: actor.role, mfa: actor.mfa } : null, demo: isDemo() });
-    else if (path.startsWith('public/') && request.method === 'GET') { const data = projectPublic(await store().read()); response = Response.json(path === 'public/site' ? data : path === 'public/services' ? { services: data.catalogue.services } : path === 'public/vehicles' ? { vehicles: data.catalogue.vehicles } : path === 'public/packages' ? { plans: data.catalogue.plans } : { error: { code: 'NOT_FOUND' } }, { status: ['public/site', 'public/services', 'public/vehicles', 'public/packages'].includes(path) ? 200 : 404 }); }
+    else if (isPublicRead) { const data = await publicData(); response = Response.json(path === 'public/site' ? data : path === 'public/services' ? { services: data.catalogue.services } : path === 'public/vehicles' ? { vehicles: data.catalogue.vehicles } : path === 'public/packages' ? { plans: data.catalogue.plans } : { error: { code: 'NOT_FOUND' } }, { status: ['public/site', 'public/services', 'public/vehicles', 'public/packages'].includes(path) ? 200 : 404 }); }
     else if (path === 'auth/demo-owner' && request.method === 'POST') { const session = await demoOwner(); response = Response.json({ signedIn: true }); response.headers.set('Set-Cookie', sessionCookie(session)); }
     else if (path === 'auth/request-verification' && request.method === 'POST') response = Response.json(actor ? { signedIn: true, name: actor.name, email: actor.email } : await requestVerification(contactSchema.parse(body)));
     else if (path === 'auth/confirm-verification' && request.method === 'POST') { const input = verifySchema.parse(body); const session = await confirmVerification(input.challengeId, input.code); response = Response.json({ verified: true, name: session.name }); response.headers.set('Set-Cookie', sessionCookie(session)); }

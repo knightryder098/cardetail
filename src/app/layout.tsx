@@ -1,12 +1,5 @@
 import type { Metadata } from "next";
-import "@fontsource/space-grotesk/400.css";
-import "@fontsource/space-grotesk/500.css";
-import "@fontsource/space-grotesk/600.css";
-import "@fontsource/space-grotesk/700.css";
-import "@fontsource/manrope/400.css";
-import "@fontsource/manrope/500.css";
-import "@fontsource/manrope/600.css";
-import "@fontsource/manrope/700.css";
+import "./fonts.css";
 import "./globals.css";
 import "@/styles/booking.css";
 import "@/styles/admin.css";

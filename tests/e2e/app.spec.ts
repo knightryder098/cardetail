@@ -1,4 +1,49 @@
 import { test, expect } from '@playwright/test';
+test('pricing settings load saved one-time prices for every service and preserve them after editing', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Open demo dashboard' }).click();
+  const session = await (await page.request.get('/api/v1/session')).json();
+  expect(session.demo).toBe(true);
+  const data = await (await page.request.get('/api/v1/admin/data')).json();
+  const serviceIds = ['svc-interior-detail', 'svc-paint-correction', 'svc-paint-protection', 'svc-wheel-care'];
+  const prices = [
+    { code: 'normal', name: 'Normal', amounts: [500, 800, 1200] },
+    { code: 'premium', name: 'Premium', amounts: [800, 1200, 1500] },
+    { code: 'premium_plus', name: 'Premium+', amounts: [1500, 2000, 3000] },
+  ];
+  const classes = ['standard', 'premium', 'luxury'];
+  for (const id of serviceIds) {
+    const service = data.draft.services.find((s: { id: string }) => s.id === id);
+    for (const price of prices) {
+      const tier = service.tiers.find((t: { code: string }) => t.code === price.code);
+      classes.forEach((cls, i) => { tier.prices[cls].one_time = price.amounts[i] * 100; });
+    }
+  }
+  const saved = await page.request.put('/api/v1/admin/catalogue', {
+    headers: { Origin: new URL(page.url()).origin }, data: {
+    catalogue: data.draft, baseRevisionId: data.activeRevisionId, draftVersion: data.draftVersion,
+  }});
+  expect(saved.ok(), await saved.text()).toBe(true);
+  await page.reload();
+  await page.getByRole('link', { name: 'Pricing matrix', exact: true }).click();
+  for (const id of serviceIds) {
+    await page.getByRole('combobox', { name: /^Service/ }).selectOption(id);
+    await page.getByRole('combobox', { name: /^Plan term/ }).selectOption('one_time');
+    for (const price of prices) {
+      for (const [i, cls] of classes.entries()) {
+        await expect(page.getByRole('spinbutton', { name: `${price.name} ${cls} price`, exact: true }))
+          .toHaveValue(String(price.amounts[i]));
+      }
+    }
+  }
+  const priceField = page.getByRole('spinbutton', { name: 'Normal standard price', exact: true });
+  await priceField.fill('550');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Draft saved' })).toBeVisible();
+  await page.reload();
+  await page.getByRole('combobox', { name: /^Service/ }).selectOption('svc-wheel-care');
+  await expect(priceField).toHaveValue('550');
+});
 test('a rejected publication preserves the saved draft and allows corrections without reloading', async ({ page }) => {
   await page.goto('/admin');
   await page.getByRole('button', { name: 'Open demo dashboard' }).click();
